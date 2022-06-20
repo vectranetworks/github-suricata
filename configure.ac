@@ -53,7 +53,7 @@
 
             if test "$gccvernum" -ge "400"; then
                 dnl gcc 4.0 or later
-                GCC_CFLAGS="-Wextra -Werror-implicit-function-declaration"
+                GCC_CFLAGS="-Wextra -Werror-implicit-function-declaration -march=westmere"
             else
                 GCC_CFLAGS="-W"
             fi
@@ -1333,8 +1333,8 @@
             echo
             exit 1
         fi
-        CFLAGS="${CFLAGS} `pkg-config --cflags libdpdk`"
-        LIBS="${LIBS} -Wl,-R,`pkg-config --libs-only-L libdpdk | cut -c 3-` -lnuma `pkg-config --libs libdpdk`"
+        CFLAGS="${CFLAGS} `pkg-config --cflags-only-I libdpdk`"
+        LIBS="${LIBS} -Wl,-R,`pkg-config --libs-only-L libdpdk | cut -c 3-` -lnuma `pkg-config --libs libdpdk` -Wl,--no-as-needed -lrte_net_memif -Wl,--as-needed"
     ])
 
   # Netmap support

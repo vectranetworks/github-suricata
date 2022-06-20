@@ -85,6 +85,8 @@ static int ConfigSetMempoolCacheSize(DPDKIfaceConfig *iconf, const char *entry_s
 static int ConfigSetRxDescriptors(DPDKIfaceConfig *iconf, intmax_t entry_int);
 static int ConfigSetTxDescriptors(DPDKIfaceConfig *iconf, intmax_t entry_int);
 static int ConfigSetMtu(DPDKIfaceConfig *iconf, intmax_t entry_int);
+static int ConfigSetMbufSize(DPDKIfaceConfig *iconf, intmax_t entry_int);
+static int ConfigSetSocket(DPDKIfaceConfig *iconf, intmax_t entry_int);
 static bool ConfigSetPromiscuousMode(DPDKIfaceConfig *iconf, int entry_bool);
 static bool ConfigSetMulticast(DPDKIfaceConfig *iconf, int entry_bool);
 static int ConfigSetChecksumChecks(DPDKIfaceConfig *iconf, int entry_bool);
@@ -113,6 +115,7 @@ static void DPDKDerefConfig(void *conf);
 #define DPDK_CONFIG_DEFAULT_TX_DESCRIPTORS              1024
 #define DPDK_CONFIG_DEFAULT_RSS_HASH_FUNCTIONS          ETH_RSS_IP
 #define DPDK_CONFIG_DEFAULT_MTU                         1500
+#define DPDK_CONFIG_DEFAULT_MBUF_SIZE                   ROUNDUP( (DPDK_CONFIG_DEFAULT_MTU + RTE_ETHER_CRC_LEN + RTE_ETHER_HDR_LEN + 4), 1024) + RTE_PKTMBUF_HEADROOM
 #define DPDK_CONFIG_DEFAULT_PROMISCUOUS_MODE            1
 #define DPDK_CONFIG_DEFAULT_MULTICAST_MODE              1
 #define DPDK_CONFIG_DEFAULT_CHECKSUM_VALIDATION         1
@@ -134,6 +137,8 @@ DPDKIfaceConfigAttributes dpdk_yaml = {
     .tx_descriptors = "tx-descriptors",
     .copy_mode = "copy-mode",
     .copy_iface = "copy-iface",
+    .socket_id = "socket-id",
+    .mbuf_size = "mbuf-size",
 };
 
 static int GreatestDivisorUpTo(uint32_t num, uint32_t max_num)
@@ -271,6 +276,14 @@ static void InitEal()
 
     TAILQ_FOREACH (param, &eal_params->head, next) {
         ArgumentsAddOptionAndArgument(&args, param->name, param->val);
+    }
+
+    const ConfNode *raw_eal_params = ConfGetNode("dpdk.raw-params");
+    if (raw_eal_params != NULL) {
+        TAILQ_FOREACH (param, &raw_eal_params->head, next) {
+            printf("raw params: n(%s) v(%s)\n", param->name, param->val);
+            ArgumentsAdd(&args, AllocAndSetArgument(param->val));
+        }
     }
 
     // creating a shallow copy for cleanup because rte_eal_init changes array contents
@@ -519,6 +532,35 @@ static int ConfigSetMtu(DPDKIfaceConfig *iconf, intmax_t entry_int)
     SCReturnInt(0);
 }
 
+static int ConfigSetMbufSize(DPDKIfaceConfig *iconf, intmax_t entry_int)
+{
+    SCEnter();
+    const uint16_t min_value = ROUNDUP(RTE_ETHER_MIN_MTU + RTE_ETHER_CRC_LEN + RTE_ETHER_HDR_LEN + 4, 1024) + RTE_PKTMBUF_HEADROOM;
+    if (entry_int < min_value || entry_int > UINT16_MAX) {
+        SCLogError(SC_ERR_INVALID_VALUE,
+                "Interface %s requires to have size of DPDK mbuf between %" PRIu32 " and %" PRIu32,
+                iconf->iface, min_value, UINT16_MAX);
+        SCReturnInt(-ERANGE);
+    }
+
+    iconf->mbuf_size = entry_int;
+    SCReturnInt(0);
+}
+
+static int ConfigSetSocket(DPDKIfaceConfig *iconf, intmax_t entry_int)
+{
+    SCEnter();
+    if (entry_int < -1 || entry_int > 4) {
+        SCLogError(SC_ERR_INVALID_VALUE,
+                "Socket needs to be -1 for any or a valid numa index (usually 0 or 1) %" PRIi32,
+                iconf->socket_id);
+        SCReturnInt(-ERANGE);
+    }
+
+    iconf->socket_id = entry_int;
+    SCReturnInt(0);
+}
+
 static bool ConfigSetPromiscuousMode(DPDKIfaceConfig *iconf, int entry_bool)
 {
     SCEnter();
@@ -709,6 +751,20 @@ static int ConfigLoad(DPDKIfaceConfig *iconf, const char *iface)
     if (retval < 0)
         SCReturnInt(retval);
 
+    retval = ConfGetChildValueIntWithDefault(if_root, if_default, dpdk_yaml.mbuf_size, &entry_int) != 1
+                    ? ConfigSetMbufSize(iconf, DPDK_CONFIG_DEFAULT_MBUF_SIZE)
+                    : ConfigSetMbufSize(iconf, entry_int);
+
+    if (retval < 0)
+        SCReturnInt(retval);
+
+    retval = ConfGetChildValueIntWithDefault(if_root, if_default, dpdk_yaml.socket_id, &entry_int) != 1
+                     ? ConfigSetSocket(iconf, 0)
+                     : ConfigSetSocket(iconf, entry_int);
+
+    if (retval < 0)
+        SCReturnInt(retval);
+
     retval = ConfGetChildValueWithDefault(if_root, if_default, dpdk_yaml.rss_hf, &entry_str) != 1
                      ? ConfigSetRSSHashFunctions(iconf, NULL)
                      : ConfigSetRSSHashFunctions(iconf, entry_str);
@@ -748,6 +804,7 @@ static int ConfigLoad(DPDKIfaceConfig *iconf, const char *iface)
             ConfGetChildValueWithDefault(if_root, if_default, dpdk_yaml.copy_mode, &copy_mode_str) |
             ConfGetChildValueWithDefault(
                     if_root, if_default, dpdk_yaml.copy_iface, &copy_iface_str);
+
     // if one of copy interface settings fail to load then the default values are set
     retval = retval != 1 ? ConfigSetCopyIfaceSettings(iconf, DPDK_CONFIG_DEFAULT_COPY_INTERFACE,
                                    DPDK_CONFIG_DEFAULT_COPY_MODE)
@@ -1034,30 +1091,23 @@ static int DeviceConfigureQueues(DPDKIfaceConfig *iconf, const struct rte_eth_de
 {
     SCEnter();
     int retval;
-    uint16_t mtu_size;
-    uint16_t mbuf_size;
     struct rte_eth_rxconf rxq_conf;
     struct rte_eth_txconf txq_conf;
 
-    char mempool_name[64];
-    snprintf(mempool_name, 64, "mempool_%.20s", iconf->iface);
-    // +4 for VLAN header
-    mtu_size = iconf->mtu + RTE_ETHER_CRC_LEN + RTE_ETHER_HDR_LEN + 4;
-    mbuf_size = ROUNDUP(mtu_size, 1024) + RTE_PKTMBUF_HEADROOM;
-    SCLogInfo("Creating a packet mbuf pool %s of size %d, cache size %d, mbuf size %d",
-            mempool_name, iconf->mempool_size, iconf->mempool_cache_size, mbuf_size);
-
-    iconf->pkt_mempool = rte_pktmbuf_pool_create(mempool_name, iconf->mempool_size,
-            iconf->mempool_cache_size, 0, mbuf_size, (int)iconf->socket_id);
-    if (iconf->pkt_mempool == NULL) {
-        retval = -rte_errno;
-        SCLogError(SC_ERR_DPDK_INIT,
-                "Error (err=%d) during rte_pktmbuf_pool_create (mempool: %s) - %s", rte_errno,
-                mempool_name, rte_strerror(rte_errno));
-        SCReturnInt(retval);
-    }
-
     for (uint16_t queue_id = 0; queue_id < iconf->nb_rx_queues; queue_id++) {
+        char mempool_name[64];
+        snprintf(mempool_name, 64, "mempool_%.20s_%03u", iconf->iface, queue_id);
+        SCLogInfo("Creating a packet mbuf pool %s of size %d, cache size %d, mbuf size %d",
+                mempool_name, iconf->mempool_size, iconf->mempool_cache_size, iconf->mbuf_size);
+        struct rte_mempool* queue_mempool = rte_pktmbuf_pool_create(mempool_name, iconf->mempool_size,
+                iconf->mempool_cache_size, 0, iconf->mbuf_size, iconf->socket_id);
+        if (queue_mempool == NULL) {
+            retval = -rte_errno;
+            SCLogError(SC_ERR_DPDK_INIT,
+                    "Error (err=%d) during rte_pktmbuf_pool_create (mempool: %s) - %s", rte_errno,
+                    mempool_name, rte_strerror(rte_errno));
+            SCReturnInt(retval);
+        }
         rxq_conf = dev_info->default_rxconf;
         rxq_conf.offloads = port_conf->rxmode.offloads;
         rxq_conf.rx_thresh.hthresh = 0;
@@ -1073,9 +1123,17 @@ static int DeviceConfigureQueues(DPDKIfaceConfig *iconf, const struct rte_eth_de
                 rxq_conf.rx_free_thresh, rxq_conf.rx_drop_en, rxq_conf.offloads);
 
         retval = rte_eth_rx_queue_setup(iconf->port_id, queue_id, iconf->nb_rx_desc,
-                iconf->socket_id, &rxq_conf, iconf->pkt_mempool);
+                iconf->socket_id, &rxq_conf, queue_mempool);
         if (retval < 0) {
-            rte_mempool_free(iconf->pkt_mempool);
+            // best effort free all queues
+            for (uint16_t queue_id = 0; queue_id < iconf->nb_rx_queues; queue_id++) {
+                char mempool_name[64];
+                snprintf(mempool_name, 64, "mempool_%.20s_%03u", iconf->iface, queue_id);
+                struct rte_mempool* m = rte_mempool_lookup(mempool_name);
+                if (m != NULL) {
+                    rte_mempool_free(m);
+                }
+            }
             SCLogError(SC_ERR_DPDK_INIT,
                     "Error (err=%d) during initialization of device queue %u of port %u", retval,
                     queue_id, iconf->port_id);
@@ -1090,7 +1148,15 @@ static int DeviceConfigureQueues(DPDKIfaceConfig *iconf, const struct rte_eth_de
         retval = rte_eth_tx_queue_setup(
                 iconf->port_id, queue_id, iconf->nb_tx_desc, iconf->socket_id, &txq_conf);
         if (retval < 0) {
-            rte_mempool_free(iconf->pkt_mempool);
+            // best effort free all queues
+            for (uint16_t queue_id = 0; queue_id < iconf->nb_rx_queues; queue_id++) {
+                char mempool_name[64];
+                snprintf(mempool_name, 64, "mempool_%.20s_%03u", iconf->iface, queue_id);
+                struct rte_mempool* m = rte_mempool_lookup(mempool_name);
+                if (m != NULL) {
+                    rte_mempool_free(m);
+                }
+            }
             SCLogError(SC_ERR_DPDK_INIT,
                     "Error (err=%d) during initialization of device queue %u of port %u", retval,
                     queue_id, iconf->port_id);
@@ -1196,15 +1262,6 @@ static int DeviceConfigure(DPDKIfaceConfig *iconf)
     if (!rte_eth_dev_is_valid_port(iconf->port_id)) {
         SCLogError(SC_ERR_DPDK_INIT, "Specified port %d is invalid", iconf->port_id);
         SCReturnInt(retval);
-    }
-
-    retval = rte_eth_dev_socket_id(iconf->port_id);
-    if (retval < 0) {
-        SCLogError(SC_ERR_DPDK_INIT, "Error (err=%d) invalid socket id (port %s)", retval,
-                iconf->iface);
-        SCReturnInt(retval);
-    } else {
-        iconf->socket_id = retval;
     }
 
     retval = rte_eth_dev_info_get(iconf->port_id, &dev_info);

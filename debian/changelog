@@ -1,0 +1,89 @@
+suricata (7.0.0-0vectra13) stable; urgency=medium
+
+  * Add PURL metadata to debs.
+
+ -- Neil Jones <njones@vectra.ai>  Tue, 09 Jul 2024 11:05:25 -0500
+
+suricata (7.0.0-0vectra12) stable; urgency=medium
+
+  * Add upstream version metadata to the control file
+
+ -- Neil Jones <njones@vectra.ai>  Tue, 25 Jun 2024 15:28:43 -0500
+
+suricata (7.0.0-0vectra11) stable; urgency=medium
+
+  * make mbuf-size configurable in dpdk
+
+ -- joconnor <joconnor@vectra.ai>  Tue, 11 Jul 2023 22:39:56 +0000
+
+suricata (7.0.0-0vectra10) stable; urgency=medium
+
+  * Bump dpdk version from 20.11 to 21.11
+
+ -- jchang <jchang@vectra.ai>  Tue, 07 Jun 2023 14:17:00 +0000
+
+suricata (7.0.0-0vectra09) stable; urgency=medium
+
+  * remove suricata.service file 
+
+ -- joconnor <joconnor@vectra.ai>  Thu, 25 May 2023 22:53:00 +0000
+
+suricata (7.0.0-0vectra08) stable; urgency=medium
+
+  * Add packet size measurement into dpdk
+
+ -- joconnor <joconnor@vectra.ai>  Tue, 18 Apr 2023 22:20:33 +0000
+
+suricata (7.0.0-0vectra07) stable; urgency=medium
+
+  * Refactor debian build scripts and add sccache support
+
+ -- njones <njones@vectra.ai>  Thu, 06 Apr 2023 12:47:01 -0400
+
+suricata (7.0.0-0vectra06) stable; urgency=medium
+
+  * use 1 queue per suricata thread
+
+ -- joconnor <joconnor@vectra.ai>  Wed, 15 Feb 2023 22:39:09 +0000
+
+suricata (7.0.0-0vectra05) stable; urgency=medium
+
+  * altered suricata build system
+
+ -- cfortman <cfortman@vectra.ai>  Mon, 09 Jan 2023 18:57:00 +0000
+
+suricata (7.0.0-0vectra04) stable; urgency=medium
+
+  * altered suricata default yaml
+
+ -- joconnor <joconnor@vectra.ai>  Tue, 08 Nov 2022 18:57:00 +0000
+
+suricata (7.0.0-0vectra03) stable; urgency=medium
+
+  * Merge in upstream suricata-7.0.0-beta1
+
+ -- joconnor <joconnor@vectra.ai>  Tue, 15 Nov 2022 21:37:00 +0000
+
+suricata (7.0.0-0vectra02) stable; urgency=medium
+
+  * Add no-start to suricata service dh_installsystemd
+
+ -- cfortman <cfortman@vectra.ai>  Thu, 13 Oct 2022 11:04:00 +0400
+
+suricata (7.0.0-0vectra01) stable; urgency=medium
+
+  * Initial packaging changes to suricata
+
+ -- cfortman <cfortman@vectra.ai>  Tue, 04 Oct 2022 10:16:00 +0400
+
+suricata (7.0.0-0vectra0) stable; urgency=medium
+
+  * Make initial changes to DPDK code in suricata.
+
+ -- joconnor <joconnor@vectra.ai>  Thu, 07 Jul 2022 02:03:00 +0000
+
+suricata (6.0.5-0ubuntu4) jammy; urgency=medium
+
+  * Initial Release.
+
+ -- root <pmanev@oisf.net>  Tue, 26 Apr 2022 22:32:59 +0200

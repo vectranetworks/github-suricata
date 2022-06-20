@@ -3,5 +3,5 @@ Cargo.toml
 /.cargo/config
 /Cargo.lock
 /target
-/vendor
 /gen
+/vendor

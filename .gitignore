@@ -68,3 +68,17 @@ test.sh
 /libsuricata-config
 !/libsuricata-config.in
 !/.readthedocs.yaml
+buildout/
+debian/.debhelper/
+debian/autoreconf.after
+debian/autoreconf.before
+debian/debhelper-build-stamp
+debian/files
+debian/suricata-dbg.substvars
+debian/suricata-dbg/
+debian/suricata.postinst.debhelper
+debian/suricata.postrm.debhelper
+debian/suricata.prerm.debhelper
+debian/suricata.substvars
+debian/suricata/
+debian/tmp/

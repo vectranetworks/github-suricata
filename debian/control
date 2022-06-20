@@ -1,0 +1,77 @@
+Source: suricata
+Section: net
+Priority: optional
+Maintainer: Peter Manev <pmanev@oisf.net>
+Build-Depends: autotools-dev,
+               debhelper (>= 9),
+               dh-autoreconf,
+               libcap-ng-dev,
+               libmaxminddb-dev,
+               libhiredis-dev,
+               libjansson-dev,
+               libhyperscan-dev (>= 5.0) [i386 amd64],
+               libmagic-dev,
+               libnet1-dev | libnet-dev,
+               libnetfilter-queue-dev,
+               libnspr4-dev,
+               libnss3-dev,
+               libpcap-dev,
+               libpcre3-dev,
+               libprelude-dev,
+               libyaml-dev,
+               python3,
+               python3-yaml,
+               python3-distutils,
+               wget,
+               rustc,
+               cargo,
+               zlib1g-dev | libz-dev,
+               liblzma-dev,
+               liblz4-dev,
+               libevent-dev
+X-Python-Version: >= 3.1
+Standards-Version: 4.1.3
+Homepage: https://suricata.io/
+Vcs-Browser: https://anonscm.debian.org/cgit/pkg-suricata/pkg-suricata.git
+Vcs-Git: https://alioth.debian.org/anonscm/git/pkg-suricata/pkg-suricata.git
+XBCS-Upstream-Purl: pkg:deb/debian/suricata@1:7.0.0-beta1?arch=amd64&distro=trixie
+
+Package: suricata
+Architecture: any
+Depends: ${misc:Depends}, ${python3:Depends}, ${shlibs:Depends}, lsb-base (>= 3.0-6), wget, python3, python3-yaml, libhyperscan5 [i386 amd64] , liblzma-dev 
+Conflicts: libhtp1 (<< 0.5.16)
+Replaces: libhtp1 (<< 0.5.16)
+Description: Suricata open source multi-thread IDS/IPS/NSM system.
+ Suricata IDS/IPS/NSM 
+     http://www.openinfosecfoundation.org/
+     http://planet.suricata-ids.org/
+     http://suricata-ids.org/
+ Suricata IDS/IPS/NSM - Suricata is a high performance Intrusion Detection and Prevention System and Network Security Monitoring engine.
+ Open Source and owned by a community run non-profit foundation, the Open Information Security Foundation (OISF). Suricata is developed by the OISF, its supporting vendors and the community.
+ This Engine supports:
+     Multi-Threading - provides for extremely fast and flexible operation on multicore systems.
+     File Extraction, MD5 matching - over 4000 file types recognized and extracted from live traffic.
+     TLS/SSL certificate matching/logging
+     IEEE 802.1ad (QinQ) and IEEE 802.1Q (VLAN) support
+     All JSON output/logging capability
+     NSM runmode
+     Automatic Protocol Detection (IPv4/6, TCP, UDP, ICMP, HTTP, TLS, FTP, SMB, DNS )
+     Gzip Decompression
+     Fast IP Matching
+     Hardware acceleration on CUDA GPU cards
+ and many more great features -
+ http://suricata-ids.org/features/all-features/
+XBCS-Upstream-Purl: pkg:deb/debian/suricata@1:7.0.0-beta1?arch=amd64&distro=trixie
+
+Package: suricata-dbg
+Section: debug
+Architecture: any
+Priority: extra
+Depends: suricata (= ${binary:Version}), ${misc:Depends}, ${shlibs:Depends}
+Description: Next Generation Intrusion Detection and Prevention Tool - debug symbols
+ Suricata is a network Intrusion Detection System (IDS). It is based on
+ rules (and is fully compatible with snort rules) to detect a variety of
+ attacks / probes by searching packet content.
+ .
+ This package contains the debug symbols for Suricata.
+XBCS-Upstream-Purl: pkg:deb/debian/suricata@1:7.0.0-beta1?arch=amd64&distro=trixie

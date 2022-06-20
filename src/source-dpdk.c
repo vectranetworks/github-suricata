@@ -333,6 +333,10 @@ static void DPDKReleasePacket(Packet *p)
     PacketFreeOrRelease(p);
 }
 
+#define STATS_NUM_THREADS 64
+#define STATS_NUM_BUCKETS 32
+static size_t size_buckets_per_thread[STATS_NUM_THREADS][STATS_NUM_BUCKETS];
+
 /**
  *  \brief Main DPDK reading Loop function
  */
@@ -348,6 +352,10 @@ static TmEcode ReceiveDPDKLoop(ThreadVars *tv, void *data, void *slot)
     TmSlot *s = (TmSlot *)slot;
 
     ptv->slot = s->slot_next;
+
+    for (size_t i = 0; i < STATS_NUM_BUCKETS; i++) {
+        size_buckets_per_thread[ptv->queue_id][i] = 0;
+    }
 
     PacketPoolWait();
     while (1) {
@@ -381,6 +389,12 @@ static TmEcode ReceiveDPDKLoop(ThreadVars *tv, void *data, void *slot)
             p->dpdk_v.out_port_id = ptv->out_port_id;
             p->dpdk_v.out_queue_id = ptv->queue_id;
 
+            // stolen from dtl logarithmic histogram
+            size_t len = rte_pktmbuf_pkt_len(p->dpdk_v.mbuf);
+            size_t bucket = len ? (64 - __builtin_clzl(len)) : 0;
+            bucket = (bucket > 31) ? 31 : bucket;
+            size_buckets_per_thread[ptv->queue_id][bucket]++;
+
             PacketSetData(p, rte_pktmbuf_mtod(p->dpdk_v.mbuf, uint8_t *),
                     rte_pktmbuf_pkt_len(p->dpdk_v.mbuf));
             if (TmThreadsSlotProcessPkt(ptv->tv, ptv->slot, p) != TM_ECODE_OK) {
@@ -400,6 +414,42 @@ static TmEcode ReceiveDPDKLoop(ThreadVars *tv, void *data, void *slot)
     }
 
     SCReturnInt(TM_ECODE_OK);
+}
+
+TmEcode UnixManagerJsonPacketBuckets(json_t* cmd, json_t* answer, void* data) {
+    json_t *message = json_object();
+    json_t *count_array = json_array();
+    for (size_t bucket_idx = 0; bucket_idx < STATS_NUM_BUCKETS; bucket_idx++) {
+        json_t *bucket_count = json_object();
+        size_t min = bucket_idx ? (1ULL << (bucket_idx - 1)) : 0;
+        size_t max = 1ULL << bucket_idx;
+        size_t count = 0;
+        for (size_t thread = 0; thread < STATS_NUM_THREADS; thread++) {
+            count += size_buckets_per_thread[thread][bucket_idx];
+        }
+        json_object_set_new(bucket_count, "min", json_integer(min));
+        json_object_set_new(bucket_count, "max", json_integer(max));
+        json_object_set_new(bucket_count, "count", json_integer(count));
+        json_array_append_new(count_array, bucket_count);
+    }
+    json_object_set_new(message, "counts", count_array);
+    json_object_set_new(answer, "message", message);
+    SCReturnInt(TM_ECODE_OK);
+}
+
+// This function is callable from GDB and prints out the packets if
+// you're in, say, a segfaulting situation
+void DpdkPrintPacketSizes() {
+    SCLogError(SC_ERR_DPDK_INIT, "%-20s %-20s %-20s", "min", "max", "count");
+    for (size_t bucket_idx = 0; bucket_idx < STATS_NUM_BUCKETS; bucket_idx++) {
+        size_t min = bucket_idx ? (1ULL << (bucket_idx - 1)) : 0;
+        size_t max = 1ULL << bucket_idx;
+        size_t count = 0;
+        for (size_t thread = 0; thread < STATS_NUM_THREADS; thread++) {
+            count += size_buckets_per_thread[thread][bucket_idx];
+        }
+        SCLogError(SC_ERR_DPDK_INIT, "%-20zu %-20zu %-20zu", min, max, count);
+    }
 }
 
 /**
@@ -449,8 +499,13 @@ static TmEcode ReceiveDPDKThreadInit(ThreadVars *tv, const void *initdata, void 
     uint16_t queue_id = SC_ATOMIC_ADD(dpdk_config->queue_id, 1);
     ptv->queue_id = queue_id;
     // pass the pointer to the mempool and then forget about it. Mempool is freed in thread deinit.
-    ptv->pkt_mempool = dpdk_config->pkt_mempool;
-    dpdk_config->pkt_mempool = NULL;
+    char mempool_name[64];
+    snprintf(mempool_name, 64, "mempool_%.20s_%03d", dpdk_config->iface, queue_id);
+    ptv->pkt_mempool = rte_mempool_lookup(mempool_name);
+    if (ptv->pkt_mempool == NULL) {
+        SCLogError(SC_ERR_DPDK_INIT, "Error couldn't find mempool %s", mempool_name);
+        goto fail;
+    }
 
     // the last thread starts the device
     if (queue_id == dpdk_config->threads - 1) {
