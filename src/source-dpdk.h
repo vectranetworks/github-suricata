@@ -59,6 +59,7 @@ typedef struct DPDKIfaceConfig_ {
     uint64_t rss_hf;
     /* set maximum transmission unit of the device in bytes */
     uint16_t mtu;
+    uint16_t mbuf_size;
     uint16_t nb_rx_queues;
     uint16_t nb_rx_desc;
     uint16_t nb_tx_queues;

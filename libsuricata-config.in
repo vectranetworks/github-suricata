@@ -60,7 +60,7 @@ if [ "$show_cflags" = "yes" ]; then
 fi
 
 if [ "$show_libs" = "yes" ]; then
-    output="${output} -L$libdir $lib $LIBS"
+    output="${output} -L$libdir $lib $LIBS -lrte_eal -Wl,--no-as-needed -lrte_net_memif"
 fi
 
 echo "$output"

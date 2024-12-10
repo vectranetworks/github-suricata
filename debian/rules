@@ -1,0 +1,83 @@
+#!/usr/bin/make -f
+# See debhelper(7) (uncomment to enable)
+# output every command that modifies files on the build system.
+export DH_VERBOSE = 1
+
+CONCURRENCY := -j$(shell nproc)
+
+SURICATA_DESTDIR = $(CURDIR)/debian/suricata
+export DEB_BUILD_MAINT_OPTIONS=hardening=+pie,+bindnow
+
+ARCH ?= $(shell dpkg --print-architecture)
+DEB_HOST_MULTIARCH ?= $(shell dpkg-architecture -qDEB_HOST_MULTIARCH)
+
+RUSTFLAGS="${RUSTFLAGS} -C target-cpu=westmere"
+
+LUAJIT_ARCHS = i386 amd64 powerpc armel armhf
+LUA_ARCHS = ppc64el arm64
+
+ifneq (,$(findstring $(ARCH),$(LUAJIT_ARCHS)))
+	ENABLE_LUAJIT="--enable-luajit"
+endif
+
+ifneq (,$(findstring $(ARCH),$(LUA_ARCHS)))
+	ENABLE_LUA="--enable-lua"
+endif
+
+CONFIGURE_ARGS = --prefix=/usr/ --sysconfdir=/etc/ --localstatedir=/var/ --disable-nfqueue \
+	--disable-gccmarch-native --disable-hiredis --disable-geoip \
+	--enable-gccprotect --enable-pie \
+	--enable-dpdk --disable-lua --disable-luajit
+
+
+# dh_make generated override targets
+# This is example for Cmake (See https://bugs.debian.org/641051 )
+#override_dh_auto_configure:
+#	dh_auto_configure -- #	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
+
+# added for 6.0.0-beta1 fix
+#override_dh_update_autotools_config:
+#	cp $(CURDIR)/debian/acsite.m4 $(CURDIR)/m4
+
+override_dh_auto_configure:
+	CC="sccache gcc" CXX="sccache g++" \
+	dh_auto_configure -- $(CONFIGURE_ARGS)
+
+override_dh_auto_clean:
+	# Comment this out to disable cleanup for manual builds
+	dh_auto_clean
+
+.PHONY: override_dh_strip
+override_dh_strip:
+	dh_strip --dbg-package=suricata-dbg
+
+override_dh_auto_install:
+	dh_auto_install -- install-full
+	#rm -rf $(SURICATA_DESTDIR)/usr/lib/python*; \
+	#(cd scripts/suricatasc && \
+	#	python -B setup.py install --install-layout=deb --prefix $(SURICATA_DESTDIR)/usr)
+	# clean upstream install documentation
+	rm -rf $(SURICATA_DESTDIR)/usr/share/doc/suricata/*
+
+override_dh_installdeb:
+	dh_installdeb
+	find ${CURDIR}/debian/*/DEBIAN -name conffiles -delete
+	cat ${CURDIR}/debian/suricata.conffiles | sort -u > ${CURDIR}/debian/suricata/DEBIAN/conffiles;
+
+override_dh_installdocs:
+	dh_installdocs --link-doc=suricata
+
+# added fix for 6.0.0-beta1
+override_dh_auto_test:
+	# pass
+
+override_dh_installinit:
+	#pass
+
+override_dh_auto_build:
+	RUSTC_WRAPPER=/usr/local/bin/sccache \
+	dh_auto_build -- $(CONCURRENCY)
+
+%:
+	dh $@ --parallel
+	#dh $@  --parallel --with python2

@@ -38,6 +38,8 @@ typedef struct DPDKIfaceConfigAttributes_ {
     const char *tx_descriptors;
     const char *copy_mode;
     const char *copy_iface;
+    const char *socket_id;
+    const char *mbuf_size;
 } DPDKIfaceConfigAttributes;
 
 int RunModeIdsDpdkWorkers(void);

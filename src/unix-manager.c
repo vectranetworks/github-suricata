@@ -1118,6 +1118,7 @@ int UnixManagerInit(void)
             "dataset-clear", UnixSocketDatasetClear, &command, UNIX_CMD_TAKE_ARGS);
     UnixManagerRegisterCommand(
             "dataset-lookup", UnixSocketDatasetLookup, &command, UNIX_CMD_TAKE_ARGS);
+    UnixManagerRegisterCommand("dump-packet-sizes", UnixManagerJsonPacketBuckets, NULL, 0);
 
     return 0;
 }

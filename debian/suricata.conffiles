@@ -1,0 +1,4 @@
+/etc/suricata/suricata.yaml
+/etc/suricata/reference.config
+/etc/suricata/classification.config
+/etc/suricata/threshold.config

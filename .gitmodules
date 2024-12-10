@@ -1,0 +1,3 @@
+[submodule "github-vectra-708"]
+	path = libhtp
+	url = https://github.com/oisf/libhtp
