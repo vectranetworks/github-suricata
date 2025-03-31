@@ -1,0 +1,3 @@
+[submodule "github-main-libhtp"]
+	path = libhtp
+	url = https://github.com/oisf/libhtp
